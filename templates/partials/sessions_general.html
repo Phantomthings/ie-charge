@@ -1,0 +1,84 @@
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ total }}</div>
+        <div class="stat-label">Total charges</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" style="color:#10b981;">{{ ok }}</div>
+        <div class="stat-label">Réussite</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" style="color:#ef4444;">{{ nok }}</div>
+        <div class="stat-label">Échec</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" style="color:#3b82f6;">{{ taux_reussite }}%</div>
+        <div class="stat-label">Taux de réussite</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" style="color:#f59e0b;">{{ taux_echec }}%</div>
+        <div class="stat-label">Taux d'échec</div>
+    </div>
+</div>
+
+<div style="display:flex; flex-direction:column; gap:1.25rem;">
+    <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem;">
+        <div style="font-weight:700; margin-bottom:0.75rem; color:var(--color-text);">Récapitulatif des erreurs par site et moment</div>
+        {% if recap_rows %}
+        <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; min-width:720px;">
+                <thead>
+                    <tr>
+                        {% for col in recap_columns %}
+                        <th style="text-align:left; padding:0.5rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border); white-space:nowrap;">{{ col }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in recap_rows %}
+                    <tr>
+                        {% for col in recap_columns %}
+                        {% set value = row[col] %}
+                        <td style="padding:0.5rem; font-size:0.9rem; border-bottom:1px solid var(--color-border); color:var(--color-text);">
+                            {% if col in ['% OK', '% NOK'] %}
+                                {{ value | round(2) }}%
+                            {% else %}
+                                {{ value }}
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📊</div>
+            <div>Aucune donnée récapitulative disponible pour ce périmètre.</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem;">
+        <div style="font-weight:700; margin-bottom:0.75rem; color:var(--color-text);">Répartition des erreurs par moment</div>
+        {% if moment_distribution %}
+        <div class="bar-chart">
+            {% for item in moment_distribution %}
+            <div class="bar-row">
+                <span class="bar-label">{{ item.moment }}</span>
+                <div class="bar-container">
+                    <div class="bar bar-danger" style="width: {{ item.percent }}%;"></div>
+                </div>
+                <span class="bar-value text-danger">{{ item.count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">✅</div>
+            <div>Aucune erreur sur la période sélectionnée.</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
