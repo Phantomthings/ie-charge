@@ -16,6 +16,44 @@ router = APIRouter(tags=["sessions"])
 templates = Jinja2Templates(directory="templates")
 
 
+def _build_conditions(sites: str, date_debut: date | None, date_fin: date | None):
+    conditions = ["1=1"]
+    params = {}
+
+    if date_debut:
+        conditions.append("`Datetime start` >= :date_debut")
+        params["date_debut"] = str(date_debut)
+    if date_fin:
+        conditions.append("`Datetime start` < DATE_ADD(:date_fin, INTERVAL 1 DAY)")
+        params["date_fin"] = str(date_fin)
+    if sites:
+        site_list = [s.strip() for s in sites.split(",") if s.strip()]
+        if site_list:
+            placeholders = ",".join([f":site_{i}" for i in range(len(site_list))])
+            conditions.append(f"Site IN ({placeholders})")
+            for i, s in enumerate(site_list):
+                params[f"site_{i}"] = s
+
+    return " AND ".join(conditions), params
+
+
+def _apply_status_filters(df: pd.DataFrame, error_type_list: list[str], moment_list: list[str]) -> pd.DataFrame:
+    df["is_ok"] = pd.to_numeric(df["state"], errors="coerce").fillna(0).astype(int).eq(0)
+    mask_nok = ~df["is_ok"]
+    mask_type = (
+        df["type_erreur"].isin(error_type_list)
+        if error_type_list and "type_erreur" in df.columns
+        else pd.Series(True, index=df.index)
+    )
+    mask_moment = (
+        df["moment"].isin(moment_list)
+        if moment_list and "moment" in df.columns
+        else pd.Series(True, index=df.index)
+    )
+    df["is_ok_filt"] = np.where(mask_nok & mask_type & mask_moment, False, True)
+    return df
+
+
 @router.get("/sessions/stats")
 async def get_sessions_stats(
     request: Request,
@@ -31,25 +69,7 @@ async def get_sessions_stats(
     error_type_list = [e.strip() for e in error_types.split(",") if e.strip()] if error_types else []
     moment_list = [m.strip() for m in moments.split(",") if m.strip()] if moments else []
 
-    # Construire la requête avec filtres
-    conditions = ["1=1"]
-    params = {}
-    
-    if date_debut:
-        conditions.append("`Datetime start` >= :date_debut")
-        params["date_debut"] = str(date_debut)
-    if date_fin:
-        conditions.append("`Datetime start` < DATE_ADD(:date_fin, INTERVAL 1 DAY)")
-        params["date_fin"] = str(date_fin)
-    if sites:
-        site_list = [s.strip() for s in sites.split(",") if s.strip()]
-        if site_list:
-            placeholders = ",".join([f":site_{i}" for i in range(len(site_list))])
-            conditions.append(f"Site IN ({placeholders})")
-            for i, s in enumerate(site_list):
-                params[f"site_{i}"] = s
-    
-    where_clause = " AND ".join(conditions)
+    where_clause, params = _build_conditions(sites, date_debut, date_fin)
     
     sql = f"""
         SELECT
@@ -77,23 +97,7 @@ async def get_sessions_stats(
             }
         )
 
-    df["is_ok"] = pd.to_numeric(df["state"], errors="coerce").fillna(0).astype(int).eq(0)
-
-    # Appliquer les filtres d'erreur au statut OK/NOK
-    mask_nok = ~df["is_ok"]
-
-    if error_type_list and "type_erreur" in df.columns:
-        mask_type = df["type_erreur"].isin(error_type_list)
-    else:
-        mask_type = True
-
-    if moment_list and "moment" in df.columns:
-        mask_moment = df["moment"].isin(moment_list)
-    else:
-        mask_moment = True
-
-    mask_nok_keep = mask_nok & mask_type & mask_moment
-    df["is_ok_filt"] = np.where(mask_nok_keep, False, True)
+    df = _apply_status_filters(df, error_type_list, moment_list)
 
     total = len(df)
     ok = int(df["is_ok_filt"].sum())
@@ -150,24 +154,7 @@ async def get_sessions_general(
     error_type_list = [e.strip() for e in error_types.split(",") if e.strip()] if error_types else []
     moment_list = [m.strip() for m in moments.split(",") if m.strip()] if moments else []
 
-    conditions = ["1=1"]
-    params = {}
-
-    if date_debut:
-        conditions.append("`Datetime start` >= :date_debut")
-        params["date_debut"] = str(date_debut)
-    if date_fin:
-        conditions.append("`Datetime start` < DATE_ADD(:date_fin, INTERVAL 1 DAY)")
-        params["date_fin"] = str(date_fin)
-    if sites:
-        site_list = [s.strip() for s in sites.split(",") if s.strip()]
-        if site_list:
-            placeholders = ",".join([f":site_{i}" for i in range(len(site_list))])
-            conditions.append(f"Site IN ({placeholders})")
-            for i, s in enumerate(site_list):
-                params[f"site_{i}"] = s
-
-    where_clause = " AND ".join(conditions)
+    where_clause, params = _build_conditions(sites, date_debut, date_fin)
 
     sql = f"""
         SELECT
@@ -198,14 +185,7 @@ async def get_sessions_general(
             },
         )
 
-    df["is_ok"] = pd.to_numeric(df["state"], errors="coerce").fillna(0).astype(int).eq(0)
-
-    mask_nok = ~df["is_ok"]
-    mask_type = df["type_erreur"].isin(error_type_list) if error_type_list and "type_erreur" in df.columns else pd.Series(True, index=df.index)
-    mask_moment = df["moment"].isin(moment_list) if moment_list and "moment" in df.columns else pd.Series(True, index=df.index)
-    mask_nok_keep = mask_nok & mask_type & mask_moment
-
-    df["is_ok_filt"] = np.where(mask_nok_keep, False, True)
+    df = _apply_status_filters(df, error_type_list, moment_list)
 
     total = len(df)
     ok = int(df["is_ok_filt"].sum())
@@ -317,5 +297,271 @@ async def get_sessions_general(
             "recap_rows": recap_rows,
             "moment_distribution": moment_distribution,
             "moment_total_errors": moment_total_errors,
+        },
+    )
+
+
+@router.get("/sessions/comparaison")
+async def get_sessions_comparaison(
+    request: Request,
+    sites: str = Query(default=""),
+    date_debut: date = Query(default=None),
+    date_fin: date = Query(default=None),
+    error_types: str = Query(default=""),
+    moments: str = Query(default=""),
+    site_focus: str = Query(default=""),
+    month_focus: str = Query(default=""),
+):
+    error_type_list = [e.strip() for e in error_types.split(",") if e.strip()] if error_types else []
+    moment_list = [m.strip() for m in moments.split(",") if m.strip()] if moments else []
+
+    where_clause, params = _build_conditions(sites, date_debut, date_fin)
+
+    sql = f"""
+        SELECT
+            Site,
+            `Datetime start`,
+            `State of charge(0:good, 1:error)` as state,
+            type_erreur,
+            moment
+        FROM kpi_sessions
+        WHERE {where_clause}
+    """
+
+    df = query_df(sql, params)
+
+    if df.empty:
+        return templates.TemplateResponse(
+            "partials/sessions_comparaison.html",
+            {
+                "request": request,
+                "site_rows": [],
+                "count_bars": [],
+                "percent_bars": [],
+                "max_total": 0,
+                "peak_rows": [],
+                "heatmap_rows": [],
+                "heatmap_hours": [],
+                "heatmap_max": 0,
+                "site_options": [],
+                "site_focus": "",
+                "month_options": [],
+                "month_focus": "",
+                "monthly_rows": [],
+                "daily_rows": [],
+                "filters": {
+                    "sites": sites,
+                    "date_debut": str(date_debut) if date_debut else "",
+                    "date_fin": str(date_fin) if date_fin else "",
+                    "error_types": error_types,
+                    "moments": moments,
+                },
+            },
+        )
+
+    df = _apply_status_filters(df, error_type_list, moment_list)
+
+    if "Datetime start" in df.columns:
+        df["Datetime start"] = pd.to_datetime(df["Datetime start"], errors="coerce")
+
+    site_col = "Site"
+
+    by_site = (
+        df.groupby(site_col, as_index=False)
+        .agg(
+            Total_Charges=("is_ok_filt", "count"),
+            Charges_OK=("is_ok_filt", "sum"),
+        )
+    )
+    by_site["Charges_NOK"] = by_site["Total_Charges"] - by_site["Charges_OK"]
+    by_site["% Réussite"] = np.where(
+        by_site["Total_Charges"].gt(0),
+        (by_site["Charges_OK"] / by_site["Total_Charges"] * 100).round(2),
+        0.0,
+    )
+    by_site["% Échec"] = np.where(
+        by_site["Total_Charges"].gt(0),
+        (by_site["Charges_NOK"] / by_site["Total_Charges"] * 100).round(2),
+        0.0,
+    )
+    by_site = by_site.reset_index(drop=True)
+
+    site_rows = by_site.to_dict("records")
+    by_site_sorted = by_site.sort_values("Total_Charges", ascending=False)
+    max_total = int(by_site_sorted["Total_Charges"].max()) if not by_site_sorted.empty else 0
+
+    count_bars = [
+        {
+            "site": row[site_col],
+            "ok": int(row["Charges_OK"]),
+            "nok": int(row["Charges_NOK"]),
+            "total": int(row["Total_Charges"]),
+        }
+        for _, row in by_site_sorted.iterrows()
+    ]
+
+    percent_bars = [
+        {
+            "site": row[site_col],
+            "ok_pct": float(row["% Réussite"]),
+            "nok_pct": float(row["% Échec"]),
+        }
+        for _, row in by_site_sorted.iterrows()
+    ]
+
+    base = df.copy()
+    base["hour"] = pd.to_datetime(base["Datetime start"], errors="coerce").dt.hour
+
+    g = (
+        base.dropna(subset=["hour"])
+        .groupby([site_col, "hour"])
+        .size()
+        .reset_index(name="Nb")
+    )
+
+    peak_rows = []
+    heatmap_rows = []
+    heatmap_hours: list[int] = []
+    heatmap_max = 0
+
+    if not g.empty:
+        peak = g.loc[g.groupby(site_col)["Nb"].idxmax()][[site_col, "hour", "Nb"]].rename(
+            columns={"hour": "Heure de pic", "Nb": "Nb au pic"}
+        )
+
+        def _w_median_hours(dfh: pd.DataFrame) -> int:
+            s = dfh.sort_values("hour")
+            c = s["Nb"].cumsum()
+            half = s["Nb"].sum() / 2.0
+            return int(s.loc[c >= half, "hour"].iloc[0])
+
+        med = g.groupby(site_col).apply(_w_median_hours).reset_index(name="Heure médiane")
+        summ = peak.merge(med, on=site_col, how="left")
+
+        for _, row in summ.sort_values(site_col).iterrows():
+            peak_rows.append(
+                {
+                    "site": row[site_col],
+                    "peak_hour": f"{int(row['Heure de pic']):02d}:00",
+                    "peak_nb": int(row["Nb au pic"]),
+                    "median_hour": f"{int(row['Heure médiane']):02d}:00",
+                }
+            )
+
+        heatmap = g.pivot(index=site_col, columns="hour", values="Nb").fillna(0)
+        heatmap_hours = sorted(heatmap.columns.tolist())
+        heatmap_max = int(heatmap.values.max()) if heatmap.size else 0
+        for idx in heatmap.index:
+            heatmap_rows.append(
+                {
+                    "site": idx,
+                    "values": [int(heatmap.at[idx, h]) if h in heatmap.columns else 0 for h in heatmap_hours],
+                }
+            )
+
+    site_options = by_site_sorted[site_col].tolist()
+    site_focus_value = site_focus if site_focus and site_focus in site_options else (site_options[0] if site_options else "")
+
+    monthly_rows = []
+    daily_rows = []
+    month_options: list[str] = []
+    month_focus_value = ""
+
+    if site_focus_value:
+        base_site = base[base[site_col] == site_focus_value].copy()
+        ok_focus = base_site[base_site["is_ok_filt"]].copy()
+        nok_focus = base_site[~base_site["is_ok_filt"]].copy()
+
+        ok_focus["month"] = pd.to_datetime(ok_focus["Datetime start"], errors="coerce").dt.to_period("M").astype(str)
+        nok_focus["month"] = pd.to_datetime(nok_focus["Datetime start"], errors="coerce").dt.to_period("M").astype(str)
+
+        g_ok_m = ok_focus.groupby("month").size().reset_index(name="Nb").assign(Status="OK")
+        g_nok_m = nok_focus.groupby("month").size().reset_index(name="Nb").assign(Status="NOK")
+
+        g_both_m = pd.concat([g_ok_m, g_nok_m], ignore_index=True)
+        g_both_m["month"] = pd.to_datetime(g_both_m["month"], errors="coerce")
+        g_both_m = g_both_m.dropna(subset=["month"]).sort_values("month")
+        g_both_m["month"] = g_both_m["month"].dt.strftime("%Y-%m")
+
+        if not g_both_m.empty:
+            piv_m = g_both_m.pivot(index="month", columns="Status", values="Nb").fillna(0).sort_index()
+            month_options = piv_m.index.tolist()
+            month_focus_value = month_focus if month_focus in month_options else (month_options[-1] if month_options else "")
+            for month in month_options:
+                ok_val = int(piv_m.at[month, "OK"]) if "OK" in piv_m.columns else 0
+                nok_val = int(piv_m.at[month, "NOK"]) if "NOK" in piv_m.columns else 0
+                total_val = ok_val + nok_val
+                ok_pct = round(ok_val / total_val * 100, 1) if total_val else 0
+                nok_pct = round(nok_val / total_val * 100, 1) if total_val else 0
+                monthly_rows.append(
+                    {
+                        "month": month,
+                        "ok": ok_val,
+                        "nok": nok_val,
+                        "ok_pct": ok_pct,
+                        "nok_pct": nok_pct,
+                    }
+                )
+
+            if month_focus_value:
+                ok_month = ok_focus[ok_focus["month"] == month_focus_value].copy()
+                nok_month = nok_focus[nok_focus["month"] == month_focus_value].copy()
+
+                ok_month["day"] = pd.to_datetime(ok_month["Datetime start"], errors="coerce").dt.strftime("%Y-%m-%d")
+                nok_month["day"] = pd.to_datetime(nok_month["Datetime start"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+                per = pd.Period(month_focus_value, freq="M")
+                days = pd.date_range(per.to_timestamp(how="start"), per.to_timestamp(how="end"), freq="D").strftime("%Y-%m-%d")
+
+                g_ok_d = ok_month.groupby("day").size().reindex(days, fill_value=0).reset_index()
+                g_ok_d.columns = ["day", "Nb"]
+                g_ok_d["Status"] = "OK"
+                g_nok_d = nok_month.groupby("day").size().reindex(days, fill_value=0).reset_index()
+                g_nok_d.columns = ["day", "Nb"]
+                g_nok_d["Status"] = "NOK"
+
+                g_both_d = pd.concat([g_ok_d, g_nok_d], ignore_index=True)
+                piv_d = g_both_d.pivot(index="day", columns="Status", values="Nb").fillna(0)
+                for day in piv_d.index.tolist():
+                    ok_val = int(piv_d.at[day, "OK"]) if "OK" in piv_d.columns else 0
+                    nok_val = int(piv_d.at[day, "NOK"]) if "NOK" in piv_d.columns else 0
+                    total_val = ok_val + nok_val
+                    ok_pct = round(ok_val / total_val * 100, 1) if total_val else 0
+                    nok_pct = round(nok_val / total_val * 100, 1) if total_val else 0
+                    daily_rows.append(
+                        {
+                            "day": day,
+                            "ok": ok_val,
+                            "nok": nok_val,
+                            "ok_pct": ok_pct,
+                            "nok_pct": nok_pct,
+                        }
+                    )
+
+    return templates.TemplateResponse(
+        "partials/sessions_comparaison.html",
+        {
+            "request": request,
+            "site_rows": site_rows,
+            "count_bars": count_bars,
+            "percent_bars": percent_bars,
+            "max_total": max_total,
+            "peak_rows": peak_rows,
+            "heatmap_rows": heatmap_rows,
+            "heatmap_hours": heatmap_hours,
+            "heatmap_max": heatmap_max,
+            "site_options": site_options,
+            "site_focus": site_focus_value,
+            "month_options": month_options,
+            "month_focus": month_focus_value,
+            "monthly_rows": monthly_rows,
+            "daily_rows": daily_rows,
+            "filters": {
+                "sites": sites,
+                "date_debut": str(date_debut) if date_debut else "",
+                "date_fin": str(date_fin) if date_fin else "",
+                "error_types": error_types,
+                "moments": moments,
+            },
         },
     )
