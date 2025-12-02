@@ -25,12 +25,36 @@
     <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem;">
         <div style="font-weight:700; margin-bottom:0.75rem; color:var(--color-text);">Récapitulatif des erreurs par site et moment</div>
         {% if recap_rows %}
-        <div style="overflow-x:auto;">
-            <table style="width:100%; border-collapse:collapse; min-width:720px;">
+        <style>
+            .recap-table-wrapper {
+                overflow:auto;
+                max-height:520px;
+                border:1px solid var(--color-border);
+                border-radius:var(--radius-sm);
+            }
+            table.recap-table {
+                width:100%;
+                border-collapse:collapse;
+                min-width:720px;
+            }
+            .recap-table thead th {
+                position: sticky;
+                top: 0;
+                background: var(--color-surface);
+                cursor: pointer;
+            }
+            .recap-table th.sorted-asc::after { content: ' ▲'; font-size: 0.75rem; color: var(--color-text-muted); }
+            .recap-table th.sorted-desc::after { content: ' ▼'; font-size: 0.75rem; color: var(--color-text-muted); }
+            .recap-table tbody tr:nth-child(even) { background: #f9fafb; }
+        </style>
+        <div class="recap-table-wrapper">
+            {% set integer_columns = ['Init', 'Lock Connector', 'CableCheck', 'Charge', 'Fin de charge', 'Unknown'] %}
+            <table id="recap-table" class="recap-table">
                 <thead>
                     <tr>
                         {% for col in recap_columns %}
-                        <th style="text-align:left; padding:0.5rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border); white-space:nowrap;">{{ col }}</th>
+                        {% set is_numeric = col in integer_columns or col in ['Total', 'Total_OK', 'Total_NOK', '% OK', '% NOK'] %}
+                        <th data-sortable="true" data-type="{{ 'number' if is_numeric else 'text' }}" style="text-align:left; padding:0.5rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border); white-space:nowrap;">{{ col }}</th>
                         {% endfor %}
                     </tr>
                 </thead>
@@ -39,9 +63,12 @@
                     <tr>
                         {% for col in recap_columns %}
                         {% set value = row[col] %}
-                        <td style="padding:0.5rem; font-size:0.9rem; border-bottom:1px solid var(--color-border); color:var(--color-text);">
+                        {% set is_integer = col in integer_columns %}
+                        <td data-sort-value="{{ value }}" style="padding:0.5rem; font-size:0.9rem; border-bottom:1px solid var(--color-border); color:var(--color-text);">
                             {% if col in ['% OK', '% NOK'] %}
                                 {{ value | round(2) }}%
+                            {% elif is_integer %}
+                                {{ value | int }}
                             {% else %}
                                 {{ value }}
                             {% endif %}
@@ -52,6 +79,62 @@
                 </tbody>
             </table>
         </div>
+        <script>
+            (() => {
+                const table = document.getElementById('recap-table');
+                if (!table) return;
+
+                const headers = table.querySelectorAll('th[data-sortable]');
+                const tbody = table.querySelector('tbody');
+                let currentSort = { index: null, dir: 'asc' };
+
+                const parseValue = (text, type) => {
+                    const cleaned = text.replace('%', '').replace(/\s+/g, '');
+                    if (type === 'number' && cleaned !== '' && !isNaN(cleaned)) {
+                        return parseFloat(cleaned);
+                    }
+                    return cleaned.toLowerCase();
+                };
+
+                const applySort = (index, type) => {
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    const dirMultiplier = currentSort.dir === 'asc' ? 1 : -1;
+
+                    rows.sort((a, b) => {
+                        const aVal = parseValue(a.children[index].dataset.sortValue ?? a.children[index].textContent.trim(), type);
+                        const bVal = parseValue(b.children[index].dataset.sortValue ?? b.children[index].textContent.trim(), type);
+
+                        if (aVal < bVal) return -1 * dirMultiplier;
+                        if (aVal > bVal) return 1 * dirMultiplier;
+                        return 0;
+                    });
+
+                    rows.forEach(row => tbody.appendChild(row));
+                };
+
+                const updateIndicators = (clickedIndex) => {
+                    headers.forEach((th, idx) => {
+                        th.classList.remove('sorted-asc', 'sorted-desc');
+                        if (idx === clickedIndex) {
+                            th.classList.add(currentSort.dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+                        }
+                    });
+                };
+
+                headers.forEach((th, index) => {
+                    th.addEventListener('click', () => {
+                        const type = th.dataset.type || 'text';
+                        if (currentSort.index === index) {
+                            currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+                        } else {
+                            currentSort = { index, dir: 'asc' };
+                        }
+                        applySort(index, type);
+                        updateIndicators(index);
+                    });
+                });
+            })();
+        </script>
         {% else %}
         <div class="empty-state">
             <div class="empty-icon">📊</div>
@@ -74,6 +157,7 @@
             </div>
             {% endfor %}
         </div>
+        <div style="margin-top:0.5rem; font-weight:600; color:var(--color-text);">Total erreurs : {{ moment_total_errors }}</div>
         {% else %}
         <div class="empty-state">
             <div class="empty-icon">✅</div>

@@ -194,6 +194,7 @@ async def get_sessions_general(
                 "recap_columns": [],
                 "recap_rows": [],
                 "moment_distribution": [],
+                "moment_total_errors": 0,
             },
         )
 
@@ -245,6 +246,7 @@ async def get_sessions_general(
     recap_columns = []
     recap_rows = []
     moment_distribution = []
+    moment_total_errors = 0
 
     if not err.empty:
         err_grouped = (
@@ -276,6 +278,11 @@ async def get_sessions_general(
         ] + moment_cols + ["% OK", "% NOK"]
 
         recap = recap[recap_columns]
+
+        numeric_moment_cols = [c for c in moment_cols if c in recap.columns]
+        if numeric_moment_cols:
+            recap[numeric_moment_cols] = recap[numeric_moment_cols].astype(int)
+
         recap_rows = recap.to_dict("records")
 
         counts_moment = (
@@ -287,6 +294,7 @@ async def get_sessions_general(
         counts_moment = counts_moment[counts_moment["count"] > 0]
 
         total_err = len(err)
+        moment_total_errors = int(total_err)
         moment_distribution = [
             {
                 "moment": row["moment"],
@@ -308,5 +316,6 @@ async def get_sessions_general(
             "recap_columns": recap_columns,
             "recap_rows": recap_rows,
             "moment_distribution": moment_distribution,
+            "moment_total_errors": moment_total_errors,
         },
     )
