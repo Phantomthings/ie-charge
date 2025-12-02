@@ -825,6 +825,10 @@
         }
         
         function refreshTab() {
+            const tabContent = document.getElementById('tab-content');
+            if (tabContent) {
+                tabContent.innerHTML = `<div class="loading"><span class="spinner"></span> Chargement...</div>`;
+            }
             const url = buildUrl(endpoints[state.tab]);
             htmx.ajax('GET', url, {target: '#tab-content', swap: 'innerHTML'});
         }
