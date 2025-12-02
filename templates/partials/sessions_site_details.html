@@ -228,16 +228,10 @@
             'Fin de charge': '#AB63FA',
             'Unknown': '#FFA15A'
         } %}
-        {% set ns = namespace(angle=0, segments=[]) %}
-        {% for item in evi_moment_grouped %}
-            {% set start = ns.angle %}
-            {% set end = start + (item.percent * 3.6) %}
-            {% set color = color_map.get(item.Moment_grp, 'var(--color-accent)') %}
-            {% set ns.segments = ns.segments + [color ~ ' ' ~ ('%.2f' % start) ~ 'deg ' ~ ('%.2f' % end) ~ 'deg'] %}
-            {% set ns.angle = end %}
-        {% endfor %}
         <div class="pie-chart-wrapper">
-            <div class="pie-chart" style="background: conic-gradient({{ ns.segments|join(', ') }});"></div>
+            <div class="pie-chart">
+                <canvas id="evi-moment-grouped-chart" aria-label="Moments d’erreur EVI regroupés"></canvas>
+            </div>
             <div class="pie-legend">
                 {% for item in evi_moment_grouped %}
                 {% set color = color_map.get(item.Moment_grp, 'var(--color-accent)') %}
@@ -268,16 +262,10 @@
             'Fin de charge': '#AB63FA',
             'Unknown': '#FFA15A'
         } %}
-        {% set ns = namespace(angle=0, segments=[]) %}
-        {% for item in evi_moment %}
-            {% set start = ns.angle %}
-            {% set end = start + (item.percent * 3.6) %}
-            {% set color = color_map.get(item.moment, 'var(--color-danger)') %}
-            {% set ns.segments = ns.segments + [color ~ ' ' ~ ('%.2f' % start) ~ 'deg ' ~ ('%.2f' % end) ~ 'deg'] %}
-            {% set ns.angle = end %}
-        {% endfor %}
         <div class="pie-chart-wrapper">
-            <div class="pie-chart" style="background: conic-gradient({{ ns.segments|join(', ') }});"></div>
+            <div class="pie-chart">
+                <canvas id="evi-moment-chart" aria-label="Répartition des erreurs EVI par moment"></canvas>
+            </div>
             <div class="pie-legend">
                 {% for item in evi_moment %}
                 {% set color = color_map.get(item.moment, 'var(--color-danger)') %}
@@ -383,6 +371,124 @@
 
 <script>
 (() => {
+    const chartInstances = {};
+
+    const ensureChartJs = () => new Promise((resolve, reject) => {
+        if (window.Chart) return resolve();
+
+        const existing = document.querySelector('script[data-chartjs]');
+        if (existing) {
+            existing.addEventListener('load', () => resolve());
+            existing.addEventListener('error', () => reject(new Error('Chart.js failed to load')));
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        script.async = true;
+        script.dataset.chartjs = 'true';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Chart.js failed to load'));
+        document.head.appendChild(script);
+    });
+
+    const renderPieChart = (canvasId, entries, title) => {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || !entries.length) return;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const total = entries.reduce((acc, cur) => acc + (Number(cur.value) || 0), 0) || 1;
+        const labels = entries.map((item) => item.label);
+        const data = entries.map((item) => Number(item.value) || 0);
+        const backgroundColor = entries.map((item) => item.color);
+
+        chartInstances[canvasId]?.destroy();
+
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    backgroundColor,
+                    borderColor: '#fff',
+                    borderWidth: 1,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '55%',
+                plugins: {
+                    legend: { display: false },
+                    title: title ? { display: true, text: title, color: getComputedStyle(document.documentElement).getPropertyValue('--color-text').trim() } : { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const label = ctx.label || '';
+                                const value = ctx.raw ?? 0;
+                                const percent = ((value / total) * 100).toFixed(1);
+                                return `${label}: ${value} (${percent}%)`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    };
+
+    const groupedColors = {
+        'Avant charge': '#636EFA',
+        'Charge': '#00CC96',
+        'Fin de charge': '#AB63FA',
+        'Unknown': '#FFA15A',
+    };
+
+    const momentColors = {
+        'Init': '#2563EB',
+        'Lock Connector': '#00B5D8',
+        'CableCheck': '#636EFA',
+        'Charge': '#10B981',
+        'Fin de charge': '#AB63FA',
+        'Unknown': '#FFA15A',
+    };
+
+    const initPieCharts = () => {
+        const groupedEntries = [
+            {% if evi_moment_grouped %}
+            {% for item in evi_moment_grouped %}
+            {
+                label: "{{ item.Moment_grp }}",
+                value: {{ item.Nb }},
+                color: groupedColors["{{ item.Moment_grp }}"] ?? '#2563EB',
+            }{{ ',' if not loop.last else '' }}
+            {% endfor %}
+            {% endif %}
+        ];
+
+        const momentEntries = [
+            {% if evi_moment %}
+            {% for item in evi_moment %}
+            {
+                label: "{{ item.moment }}",
+                value: {{ item.Nb }},
+                color: momentColors["{{ item.moment }}"] ?? '#dc2626',
+            }{{ ',' if not loop.last else '' }}
+            {% endfor %}
+            {% endif %}
+        ];
+
+        if (!groupedEntries.length && !momentEntries.length) return;
+
+        ensureChartJs()
+            .then(() => {
+                renderPieChart('evi-moment-grouped-chart', groupedEntries, 'Moments regroupés');
+                renderPieChart('evi-moment-chart', momentEntries, 'Par moment');
+            })
+            .catch((err) => console.error(err));
+    };
     const enhanceSortableTables = () => {
         const tables = document.querySelectorAll('.sortable-table');
         tables.forEach((table) => {
@@ -453,6 +559,7 @@
     };
 
     enhanceSortableTables();
+    initPieCharts();
 
     const siteSelect = document.getElementById('site-focus');
     if (siteSelect) siteSelect.addEventListener('change', reload);
