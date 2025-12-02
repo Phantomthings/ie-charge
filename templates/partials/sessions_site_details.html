@@ -3,6 +3,7 @@
     <style>
         .table-wrapper {
             overflow: auto;
+            max-height: 520px;
             border: 1px solid var(--color-border);
             border-radius: var(--radius-sm);
         }
@@ -31,6 +32,11 @@
         .table-wrapper tbody tr:nth-child(even) {
             background: #f9fafb;
         }
+        .sortable-table thead th[data-sortable] {
+            cursor: pointer;
+        }
+        .sortable-table th.sorted-asc::after { content: ' ▲'; font-size: 0.75rem; color: var(--color-text-muted); }
+        .sortable-table th.sorted-desc::after { content: ' ▼'; font-size: 0.75rem; color: var(--color-text-muted); }
     </style>
     <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem; display:flex; flex-direction:column; gap:1rem;">
         <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end;">
@@ -70,11 +76,11 @@
                 <table class="sortable-table" style="min-width:620px;">
                     <thead>
                         <tr>
-                            <th>PDC</th>
-                            <th>Total</th>
-                            <th>OK</th>
-                            <th>NOK</th>
-                            <th>% Réussite</th>
+                            <th data-sortable="true">PDC</th>
+                            <th data-sortable="true" data-type="number">Total</th>
+                            <th data-sortable="true" data-type="number">OK</th>
+                            <th data-sortable="true" data-type="number">NOK</th>
+                            <th data-sortable="true" data-type="number">% Réussite</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -107,16 +113,16 @@
                 <table class="sortable-table" style="min-width:760px;">
                     <thead>
                         <tr>
-                            <th>#</th>
-                            <th>ID</th>
-                            <th>Début</th>
-                            <th>Fin</th>
-                            <th>PDC</th>
-                            <th>Énergie (kWh)</th>
-                            <th>MAC</th>
-                            <th>Erreur</th>
-                            <th>Moment</th>
-                            <th>Évolution SOC</th>
+                            <th data-sortable="true" data-type="number">#</th>
+                            <th data-sortable="true">ID</th>
+                            <th data-sortable="true">Début</th>
+                            <th data-sortable="true">Fin</th>
+                            <th data-sortable="true">PDC</th>
+                            <th data-sortable="true" data-type="number">Énergie (kWh)</th>
+                            <th data-sortable="true">MAC</th>
+                            <th data-sortable="true">Erreur</th>
+                            <th data-sortable="true">Moment</th>
+                            <th data-sortable="true" data-type="number">Évolution SOC</th>
                             <th>Lien</th>
                         </tr>
                     </thead>
@@ -154,14 +160,14 @@
                 <table class="sortable-table" style="min-width:720px;">
                     <thead>
                         <tr>
-                            <th>#</th>
-                            <th>ID</th>
-                            <th>Début</th>
-                            <th>Fin</th>
-                            <th>PDC</th>
-                            <th>Énergie (kWh)</th>
-                            <th>MAC</th>
-                            <th>Évolution SOC</th>
+                            <th data-sortable="true" data-type="number">#</th>
+                            <th data-sortable="true">ID</th>
+                            <th data-sortable="true">Début</th>
+                            <th data-sortable="true">Fin</th>
+                            <th data-sortable="true">PDC</th>
+                            <th data-sortable="true" data-type="number">Énergie (kWh)</th>
+                            <th data-sortable="true">MAC</th>
+                            <th data-sortable="true" data-type="number">Évolution SOC</th>
                             <th>Lien</th>
                         </tr>
                     </thead>
@@ -217,6 +223,65 @@
 
 <script>
 (() => {
+    const enhanceSortableTables = () => {
+        const tables = document.querySelectorAll('.sortable-table');
+        tables.forEach((table) => {
+            const headers = table.querySelectorAll('th[data-sortable]');
+            const tbody = table.querySelector('tbody');
+            if (!headers.length || !tbody) return;
+
+            let currentSort = { index: null, dir: 'asc' };
+
+            const parseValue = (text, type) => {
+                const cleaned = text.replace('%', '').replace(/\s+/g, '');
+                if (type === 'number' && cleaned !== '' && !isNaN(cleaned)) {
+                    return parseFloat(cleaned);
+                }
+                return cleaned.toLowerCase();
+            };
+
+            const applySort = (index, type) => {
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                const dirMultiplier = currentSort.dir === 'asc' ? 1 : -1;
+
+                rows.sort((a, b) => {
+                    const aCell = a.children[index];
+                    const bCell = b.children[index];
+                    const aVal = parseValue(aCell?.dataset.sortValue ?? aCell?.textContent.trim() ?? '', type);
+                    const bVal = parseValue(bCell?.dataset.sortValue ?? bCell?.textContent.trim() ?? '', type);
+
+                    if (aVal < bVal) return -1 * dirMultiplier;
+                    if (aVal > bVal) return 1 * dirMultiplier;
+                    return 0;
+                });
+
+                rows.forEach(row => tbody.appendChild(row));
+            };
+
+            const updateIndicators = (clickedIndex) => {
+                headers.forEach((th, idx) => {
+                    th.classList.remove('sorted-asc', 'sorted-desc');
+                    if (idx === clickedIndex) {
+                        th.classList.add(currentSort.dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+                    }
+                });
+            };
+
+            headers.forEach((th, index) => {
+                th.addEventListener('click', () => {
+                    const type = th.dataset.type || 'text';
+                    if (currentSort.index === index) {
+                        currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        currentSort = { index, dir: 'asc' };
+                    }
+                    applySort(index, type);
+                    updateIndicators(index);
+                });
+            });
+        });
+    };
+
     const baseParams = new URLSearchParams("{{ base_query }}");
     const reload = () => {
         const params = new URLSearchParams(baseParams.toString());
@@ -226,6 +291,8 @@
         if (pdcs.length) params.set('pdc', pdcs.join(','));
         htmx.ajax('GET', `/api/sessions/site-details?${params.toString()}`, {target: '#tab-content', swap: 'innerHTML'});
     };
+
+    enhanceSortableTables();
 
     const siteSelect = document.getElementById('site-focus');
     if (siteSelect) siteSelect.addEventListener('change', reload);
