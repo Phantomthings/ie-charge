@@ -107,6 +107,49 @@
 
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
         <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem;">
+            <div style="font-weight:700; margin-bottom:0.75rem; color:var(--color-text);">Charges OK</div>
+            {% if ok_rows %}
+            <div class="table-wrapper">
+                <table class="sortable-table" style="min-width:720px;">
+                    <thead>
+                        <tr>
+                            <th data-sortable="true" data-type="number">#</th>
+                            <th data-sortable="true">ID</th>
+                            <th data-sortable="true">Début</th>
+                            <th data-sortable="true">Fin</th>
+                            <th data-sortable="true">PDC</th>
+                            <th data-sortable="true" data-type="number">Énergie (kWh)</th>
+                            <th data-sortable="true">MAC</th>
+                            <th data-sortable="true" data-type="number">Évolution SOC</th>
+                            <th>Lien</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in ok_rows %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ row['ID'] }}</td>
+                            <td>{{ row['Datetime start'] }}</td>
+                            <td>{{ row['Datetime end'] }}</td>
+                            <td>{{ row['PDC'] }}</td>
+                            <td>{{ row['Energy (Kwh)']|round(3) if row['Energy (Kwh)'] is not none else '' }}</td>
+                            <td>{{ row['MAC Address'] }}</td>
+                            <td>{{ row['evolution_soc'] }}</td>
+                            <td>{% if row['elto'] %}<a href="{{ row['elto'] }}" target="_blank">🔗</a>{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">ℹ️</div>
+                <div class="message">Aucune charge réussie sur ce périmètre.</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem;">
             <div style="font-weight:700; margin-bottom:0.75rem; color:var(--color-text);">Charges NOK</div>
             {% if err_rows %}
             <div class="table-wrapper">
@@ -149,49 +192,6 @@
             <div class="empty-state">
                 <div class="icon">✅</div>
                 <div class="message">Aucune charge en erreur sur ce périmètre.</div>
-            </div>
-            {% endif %}
-        </div>
-
-        <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem;">
-            <div style="font-weight:700; margin-bottom:0.75rem; color:var(--color-text);">Charges OK</div>
-            {% if ok_rows %}
-            <div class="table-wrapper">
-                <table class="sortable-table" style="min-width:720px;">
-                    <thead>
-                        <tr>
-                            <th data-sortable="true" data-type="number">#</th>
-                            <th data-sortable="true">ID</th>
-                            <th data-sortable="true">Début</th>
-                            <th data-sortable="true">Fin</th>
-                            <th data-sortable="true">PDC</th>
-                            <th data-sortable="true" data-type="number">Énergie (kWh)</th>
-                            <th data-sortable="true">MAC</th>
-                            <th data-sortable="true" data-type="number">Évolution SOC</th>
-                            <th>Lien</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in ok_rows %}
-                        <tr>
-                            <td>{{ loop.index }}</td>
-                            <td>{{ row['ID'] }}</td>
-                            <td>{{ row['Datetime start'] }}</td>
-                            <td>{{ row['Datetime end'] }}</td>
-                            <td>{{ row['PDC'] }}</td>
-                            <td>{{ row['Energy (Kwh)']|round(3) if row['Energy (Kwh)'] is not none else '' }}</td>
-                            <td>{{ row['MAC Address'] }}</td>
-                            <td>{{ row['evolution_soc'] }}</td>
-                            <td>{% if row['elto'] %}<a href="{{ row['elto'] }}" target="_blank">🔗</a>{% endif %}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="empty-state">
-                <div class="icon">ℹ️</div>
-                <div class="message">Aucune charge réussie sur ce périmètre.</div>
             </div>
             {% endif %}
         </div>
