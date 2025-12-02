@@ -6,6 +6,7 @@ Endpoint: GET /api/sessions/stats
 from fastapi import APIRouter, Request, Query
 from fastapi.templating import Jinja2Templates
 from datetime import date
+from urllib.parse import urlencode
 import pandas as pd
 import numpy as np
 
@@ -591,3 +592,182 @@ async def get_sessions_comparaison(
     )
 
     return templates.TemplateResponse("partials/sessions_comparaison.html", context)
+
+
+def _format_soc(s0, s1):
+    if pd.notna(s0) and pd.notna(s1):
+        try:
+            return f"{int(round(s0))}% → {int(round(s1))}%"
+        except Exception:
+            return ""
+    return ""
+
+
+def _prepare_query_params(request: Request) -> str:
+    allowed = {"sites", "date_debut", "date_fin", "error_types", "moments"}
+    data = {k: v for k, v in request.query_params.items() if k in allowed and v}
+    return urlencode(data)
+
+
+@router.get("/sessions/site-details")
+async def get_sessions_site_details(
+    request: Request,
+    sites: str = Query(default=""),
+    date_debut: date = Query(default=None),
+    date_fin: date = Query(default=None),
+    error_types: str = Query(default=""),
+    moments: str = Query(default=""),
+    site_focus: str = Query(default=""),
+    pdc: str = Query(default=""),
+):
+    error_type_list = [e.strip() for e in error_types.split(",") if e.strip()] if error_types else []
+    moment_list = [m.strip() for m in moments.split(",") if m.strip()] if moments else []
+
+    where_clause, params = _build_conditions(sites, date_debut, date_fin)
+
+    sql = f"""
+        SELECT
+            Site,
+            PDC,
+            ID,
+            `Datetime start`,
+            `Datetime end`,
+            `Energy (Kwh)`,
+            `MAC Address`,
+            type_erreur,
+            moment,
+            `SOC Start`,
+            `SOC End`,
+            `Downstream Code PC`,
+            `EVI Error Code`,
+            `State of charge(0:good, 1:error)` as state
+        FROM kpi_sessions
+        WHERE {where_clause}
+    """
+
+    df = query_df(sql, params)
+
+    if df.empty:
+        return templates.TemplateResponse(
+            "partials/sessions_site_details.html",
+            {"request": request, "site_options": [], "base_query": _prepare_query_params(request)},
+        )
+
+    df["PDC"] = df["PDC"].astype(str)
+    df["is_ok"] = pd.to_numeric(df["state"], errors="coerce").fillna(0).astype(int).eq(0)
+
+    mask_type = df["type_erreur"].isin(error_type_list) if error_type_list and "type_erreur" in df.columns else True
+    mask_moment = df["moment"].isin(moment_list) if moment_list and "moment" in df.columns else True
+    mask_nok = ~df["is_ok"]
+    mask_filtered_error = mask_nok & mask_type & mask_moment
+    df["is_ok_filt"] = np.where(mask_filtered_error, False, True)
+
+    site_options = sorted(df["Site"].dropna().unique().tolist())
+    site_value = site_focus if site_focus in site_options else (site_options[0] if site_options else "")
+
+    df_site = df[df["Site"] == site_value].copy()
+    if df_site.empty:
+        return templates.TemplateResponse(
+            "partials/sessions_site_details.html",
+            {
+                "request": request,
+                "site_options": site_options,
+                "site_focus": site_value,
+                "pdc_options": [],
+                "selected_pdc": [],
+                "base_query": _prepare_query_params(request),
+            },
+        )
+
+    pdc_options = sorted(df_site["PDC"].dropna().unique().tolist())
+    selected_pdc = [p.strip() for p in pdc.split(",") if p.strip()] if p else pdc_options
+    selected_pdc = [p for p in selected_pdc if p in pdc_options] or pdc_options
+
+    df_site = df_site[df_site["PDC"].isin(selected_pdc)].copy()
+
+    mask_type_site = df_site["type_erreur"].isin(error_type_list) if error_type_list and "type_erreur" in df_site.columns else True
+    mask_moment_site = df_site["moment"].isin(moment_list) if moment_list and "moment" in df_site.columns else True
+    df_filtered = df_site[mask_type_site & mask_moment_site].copy()
+
+    for col in ["Datetime start", "Datetime end"]:
+        if col in df_filtered.columns:
+            df_filtered[col] = pd.to_datetime(df_filtered[col], errors="coerce")
+    for col in ["Energy (Kwh)", "SOC Start", "SOC End"]:
+        if col in df_filtered.columns:
+            df_filtered[col] = pd.to_numeric(df_filtered[col], errors="coerce")
+
+    err_rows = df_filtered[~df_filtered["is_ok"]].copy()
+    err_rows["evolution_soc"] = err_rows.apply(lambda r: _format_soc(r.get("SOC Start"), r.get("SOC End")), axis=1)
+    err_rows["elto"] = err_rows["ID"].apply(lambda x: f"https://elto.nidec-asi-online.com/Charge/detail?id={str(x).strip()}" if pd.notna(x) else "") if "ID" in err_rows.columns else ""
+    err_display_cols = [
+        "ID",
+        "Datetime start",
+        "Datetime end",
+        "PDC",
+        "Energy (Kwh)",
+        "MAC Address",
+        "type_erreur",
+        "moment",
+        "evolution_soc",
+        "elto",
+    ]
+    err_table = err_rows[err_display_cols].copy() if not err_rows.empty else pd.DataFrame(columns=err_display_cols)
+    if "Datetime start" in err_table.columns:
+        err_table = err_table.sort_values("Datetime start", ascending=False)
+
+    ok_rows = df_filtered[df_filtered["is_ok"]].copy()
+    ok_rows["evolution_soc"] = ok_rows.apply(lambda r: _format_soc(r.get("SOC Start"), r.get("SOC End")), axis=1)
+    ok_rows["elto"] = ok_rows["ID"].apply(lambda x: f"https://elto.nidec-asi-online.com/Charge/detail?id={str(x).strip()}" if pd.notna(x) else "") if "ID" in ok_rows.columns else ""
+    ok_display_cols = [
+        "ID",
+        "Datetime start",
+        "Datetime end",
+        "PDC",
+        "Energy (Kwh)",
+        "MAC Address",
+        "evolution_soc",
+        "elto",
+    ]
+    ok_table = ok_rows[ok_display_cols].copy() if not ok_rows.empty else pd.DataFrame(columns=ok_display_cols)
+    if "Datetime start" in ok_table.columns:
+        ok_table = ok_table.sort_values("Datetime start", ascending=False)
+
+    by_pdc = (
+        df_site.groupby("PDC", as_index=False)
+        .agg(Total_Charges=("is_ok_filt", "count"), Charges_OK=("is_ok_filt", "sum"))
+        .assign(Charges_NOK=lambda d: d["Total_Charges"] - d["Charges_OK"])
+    )
+    by_pdc["% Réussite"] = np.where(
+        by_pdc["Total_Charges"].gt(0),
+        (by_pdc["Charges_OK"] / by_pdc["Total_Charges"] * 100).round(2),
+        0.0,
+    )
+    by_pdc = by_pdc.sort_values(["% Réussite", "PDC"], ascending=[True, True])
+
+    err_evi = err_rows[err_rows["type_erreur"] == "Erreur_EVI"].copy() if not err_rows.empty else pd.DataFrame()
+    evi_moment = []
+    if not err_evi.empty and "moment" in err_evi.columns:
+        counts = err_evi.groupby("moment").size().reset_index(name="Nb")
+        total = counts["Nb"].sum()
+        if total:
+            evi_moment = (
+                counts.assign(percent=lambda d: (d["Nb"] / total * 100).round(2))
+                .sort_values("percent", ascending=False)
+                .to_dict("records")
+            )
+
+    return templates.TemplateResponse(
+        "partials/sessions_site_details.html",
+        {
+            "request": request,
+            "site_options": site_options,
+            "site_focus": site_value,
+            "pdc_options": pdc_options,
+            "selected_pdc": selected_pdc,
+            "err_rows": err_table.to_dict("records"),
+            "ok_rows": ok_table.to_dict("records"),
+            "by_pdc": by_pdc.to_dict("records"),
+            "evi_moment": evi_moment,
+            "base_query": _prepare_query_params(request),
+        },
+    )
