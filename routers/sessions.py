@@ -808,7 +808,10 @@ async def get_sessions_site_details(
                     .reset_index()
                 )
 
-                table["Total"] = table[downstream_moments].sum(axis=1)
+                table["Code_PC"] = pd.to_numeric(table["Code_PC"], errors="coerce").fillna(0).astype(int)
+                table[downstream_moments] = table[downstream_moments].fillna(0).astype(int)
+
+                table["Total"] = table[downstream_moments].sum(axis=1).astype(int)
                 table = table.sort_values("Total", ascending=False).reset_index(drop=True)
 
                 total_all = int(table["Total"].sum())
@@ -853,7 +856,10 @@ async def get_sessions_site_details(
                     .reset_index()
                 )
 
-                table["Total"] = table[evi_occ_moments].sum(axis=1)
+                table["EVI_Code"] = pd.to_numeric(table["EVI_Code"], errors="coerce").fillna(0).astype(int)
+                table[evi_occ_moments] = table[evi_occ_moments].fillna(0).astype(int)
+
+                table["Total"] = table[evi_occ_moments].sum(axis=1).astype(int)
                 table = table.sort_values("Total", ascending=False).reset_index(drop=True)
 
                 total_all = int(table["Total"].sum())
