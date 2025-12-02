@@ -5,30 +5,80 @@
     </div>
     {% endif %}
 
+    <style>
+        .table-wrapper {
+            overflow: auto;
+            max-height: 520px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+        }
+
+        .sortable-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .sortable-table thead th {
+            position: sticky;
+            top: 0;
+            background: var(--color-surface);
+            cursor: pointer;
+            text-align: left;
+            padding: 0.6rem;
+            font-size: 0.85rem;
+            color: var(--color-text-muted);
+            border-bottom: 1px solid var(--color-border);
+            white-space: nowrap;
+        }
+
+        .sortable-table tbody td {
+            padding: 0.55rem;
+            border-bottom: 1px solid var(--color-border);
+            font-size: 0.9rem;
+            color: var(--color-text);
+        }
+
+        .sortable-table tbody tr:nth-child(even) {
+            background: #f9fafb;
+        }
+
+        .sortable-table th.sorted-asc::after { content: ' ▲'; font-size: 0.75rem; color: var(--color-text-muted); }
+        .sortable-table th.sorted-desc::after { content: ' ▼'; font-size: 0.75rem; color: var(--color-text-muted); }
+
+        .sticky-first-col {
+            position: sticky;
+            left: 0;
+            background: var(--color-surface);
+            z-index: 1;
+        }
+    </style>
+
     <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem; display:flex; flex-direction:column; gap:1rem;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
             <div style="font-weight:700; color:var(--color-text);">Statistiques par site</div>
             <div style="font-size:0.85rem; color:var(--color-text-muted);">OK = réussi · NOK = échec</div>
         </div>
         {% if site_rows %}
-        <div style="overflow:auto; border:1px solid var(--color-border); border-radius:var(--radius-sm);">
-            <table style="width:100%; border-collapse:collapse; min-width:640px;">
-                <thead style="background:var(--color-bg);">
+        <div class="table-wrapper">
+            <table class="sortable-table" style="min-width:640px;">
+                <thead>
                     <tr>
-                        {% for col in ["Site", "Total_Charges", "Charges_OK", "Charges_NOK", "% Réussite", "% Échec"] %}
-                        <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border); white-space:nowrap;">{{ col }}</th>
+                        {% set stats_cols = ["Site", "Total_Charges", "Charges_OK", "Charges_NOK", "% Réussite", "% Échec"] %}
+                        {% for col in stats_cols %}
+                        {% set is_numeric = col != 'Site' %}
+                        <th data-sortable="true" data-type="{{ 'number' if is_numeric else 'text' }}">{{ col }}</th>
                         {% endfor %}
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in site_rows %}
-                    <tr style="border-bottom:1px solid var(--color-border);">
-                        <td style="padding:0.55rem; font-weight:600; color:var(--color-text);">{{ row['Site'] }}</td>
-                        <td style="padding:0.55rem;">{{ row['Total_Charges'] }}</td>
-                        <td style="padding:0.55rem; color:#15803d;">{{ row['Charges_OK'] }}</td>
-                        <td style="padding:0.55rem; color:#dc2626;">{{ row['Charges_NOK'] }}</td>
-                        <td style="padding:0.55rem; color:#1d4ed8;">{{ row['% Réussite'] }}%</td>
-                        <td style="padding:0.55rem; color:#b91c1c;">{{ row['% Échec'] }}%</td>
+                    <tr>
+                        <td style="font-weight:600;">{{ row['Site'] }}</td>
+                        <td data-sort-value="{{ row['Total_Charges'] }}">{{ row['Total_Charges'] }}</td>
+                        <td style="color:#15803d;" data-sort-value="{{ row['Charges_OK'] }}">{{ row['Charges_OK'] }}</td>
+                        <td style="color:#dc2626;" data-sort-value="{{ row['Charges_NOK'] }}">{{ row['Charges_NOK'] }}</td>
+                        <td style="color:#1d4ed8;" data-sort-value="{{ row['% Réussite'] }}">{{ row['% Réussite'] }}%</td>
+                        <td style="color:#b91c1c;" data-sort-value="{{ row['% Échec'] }}">{{ row['% Échec'] }}%</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -85,23 +135,23 @@
     <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem; display:flex; flex-direction:column; gap:1rem;">
         <div style="font-weight:700; color:var(--color-text);">Analyse temporelle</div>
         {% if peak_rows %}
-        <div style="overflow:auto; border:1px solid var(--color-border); border-radius:var(--radius-sm);">
-            <table style="width:100%; border-collapse:collapse; min-width:560px;">
-                <thead style="background:var(--color-bg);">
+        <div class="table-wrapper">
+            <table class="sortable-table" style="min-width:560px;">
+                <thead>
                     <tr>
-                        <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">Site</th>
-                        <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">Heure de pic</th>
-                        <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">Nb au pic</th>
-                        <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">Heure médiane</th>
+                        <th data-sortable="true">Site</th>
+                        <th data-sortable="true" data-type="number">Heure de pic</th>
+                        <th data-sortable="true" data-type="number">Nb au pic</th>
+                        <th data-sortable="true" data-type="number">Heure médiane</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in peak_rows %}
-                    <tr style="border-bottom:1px solid var(--color-border);">
-                        <td style="padding:0.55rem; font-weight:600; color:var(--color-text);">{{ row.site }}</td>
-                        <td style="padding:0.55rem;">{{ row.peak_hour }}</td>
-                        <td style="padding:0.55rem;">{{ row.peak_nb }}</td>
-                        <td style="padding:0.55rem;">{{ row.median_hour }}</td>
+                    <tr>
+                        <td style="font-weight:600;">{{ row.site }}</td>
+                        <td data-sort-value="{{ row.peak_hour }}">{{ row.peak_hour }}</td>
+                        <td data-sort-value="{{ row.peak_nb }}">{{ row.peak_nb }}</td>
+                        <td data-sort-value="{{ row.median_hour }}">{{ row.median_hour }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -117,24 +167,24 @@
         <div style="display:flex; flex-direction:column; gap:0.75rem;">
             <div style="font-weight:600; color:var(--color-text);">Heatmap des charges par heure</div>
             {% if heatmap_rows %}
-            <div style="overflow:auto; border:1px solid var(--color-border); border-radius:var(--radius-sm);">
-                <table style="border-collapse:collapse; min-width:780px; width:100%;">
-                    <thead style="background:var(--color-bg);">
+            <div class="table-wrapper" style="max-height:420px;">
+                <table class="sortable-table" style="border-collapse:collapse; min-width:780px; width:100%;">
+                    <thead>
                         <tr>
-                            <th style="position:sticky; left:0; background:var(--color-bg); padding:0.6rem; border-bottom:1px solid var(--color-border); text-align:left; font-size:0.85rem; color:var(--color-text-muted);">Site</th>
+                            <th class="sticky-first-col" data-sortable="true">Site</th>
                             {% for hour in heatmap_hours %}
-                            <th style="padding:0.6rem; border-bottom:1px solid var(--color-border); font-size:0.85rem; color:var(--color-text-muted); text-align:center;">{{ "%02d:00" % hour }}</th>
+                            <th data-sortable="true" data-type="number" style="text-align:center;">{{ "%02d:00" % hour }}</th>
                             {% endfor %}
                         </tr>
                     </thead>
                     <tbody>
                         {% for row in heatmap_rows %}
                         <tr>
-                            <td style="position:sticky; left:0; background:var(--color-bg); padding:0.55rem; font-weight:600; color:var(--color-text); border-bottom:1px solid var(--color-border);">{{ row.site }}</td>
+                            <td class="sticky-first-col" style="font-weight:600;">{{ row.site }}</td>
                               {% for value in row['values'] %}
                             {% set ratio = (value / heatmap_max * 0.85) if heatmap_max else 0 %}
                             {% set text_color = '#0f172a' if ratio < 0.55 else '#ffffff' %}
-                            <td style="padding:0.5rem; border-bottom:1px solid var(--color-border); text-align:center; background:rgba(37,99,235,{{ '%.3f' % ratio }}); color:{{ text_color }}; font-weight:600;">{{ value }}</td>
+                            <td data-sort-value="{{ value }}" style="padding:0.5rem; text-align:center; background:rgba(37,99,235,{{ '%.3f' % ratio }}); color:{{ text_color }}; font-weight:600;">{{ value }}</td>
                             {% endfor %}
                         </tr>
                         {% endfor %}
@@ -189,25 +239,25 @@
                         </form>
                     </div>
                     {% if monthly_rows %}
-                    <div style="overflow:auto;">
-                        <table style="width:100%; border-collapse:collapse; min-width:520px;">
-                            <thead style="background:var(--color-bg);">
+                    <div class="table-wrapper" style="max-height:360px;">
+                        <table class="sortable-table" style="min-width:520px;">
+                            <thead>
                                 <tr>
-                                    <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">Mois</th>
-                                    <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">OK</th>
-                                    <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">NOK</th>
-                                    <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">OK %</th>
-                                    <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">NOK %</th>
+                                    <th data-sortable="true">Mois</th>
+                                    <th data-sortable="true" data-type="number">OK</th>
+                                    <th data-sortable="true" data-type="number">NOK</th>
+                                    <th data-sortable="true" data-type="number">OK %</th>
+                                    <th data-sortable="true" data-type="number">NOK %</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for row in monthly_rows %}
-                                <tr style="border-bottom:1px solid var(--color-border);">
-                                    <td style="padding:0.55rem; font-weight:600; color:var(--color-text);">{{ row.month }}</td>
-                                    <td style="padding:0.55rem; color:#15803d;">{{ row.ok }}</td>
-                                    <td style="padding:0.55rem; color:#dc2626;">{{ row.nok }}</td>
-                                    <td style="padding:0.55rem;">{{ row.ok_pct }}%</td>
-                                    <td style="padding:0.55rem;">{{ row.nok_pct }}%</td>
+                                <tr>
+                                    <td style="font-weight:600;">{{ row.month }}</td>
+                                    <td style="color:#15803d;" data-sort-value="{{ row.ok }}">{{ row.ok }}</td>
+                                    <td style="color:#dc2626;" data-sort-value="{{ row.nok }}">{{ row.nok }}</td>
+                                    <td data-sort-value="{{ row.ok_pct }}">{{ row.ok_pct }}%</td>
+                                    <td data-sort-value="{{ row.nok_pct }}">{{ row.nok_pct }}%</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -224,25 +274,25 @@
                 <div style="border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:0.75rem; background:var(--color-bg);">
                     <div style="font-weight:600; color:var(--color-text); margin-bottom:0.5rem;">Détail journalier — {{ site_focus }} {% if month_focus %}({{ month_focus }}){% endif %}</div>
                     {% if daily_rows %}
-                    <div style="overflow:auto;">
-                        <table style="width:100%; border-collapse:collapse; min-width:520px;">
-                            <thead style="background:var(--color-bg);">
+                    <div class="table-wrapper" style="max-height:360px;">
+                        <table class="sortable-table" style="min-width:520px;">
+                            <thead>
                                 <tr>
-                                    <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">Jour</th>
-                                    <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">OK</th>
-                                    <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">NOK</th>
-                                    <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">OK %</th>
-                                    <th style="text-align:left; padding:0.6rem; font-size:0.85rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border);">NOK %</th>
+                                    <th data-sortable="true">Jour</th>
+                                    <th data-sortable="true" data-type="number">OK</th>
+                                    <th data-sortable="true" data-type="number">NOK</th>
+                                    <th data-sortable="true" data-type="number">OK %</th>
+                                    <th data-sortable="true" data-type="number">NOK %</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for row in daily_rows %}
-                                <tr style="border-bottom:1px solid var(--color-border);">
-                                    <td style="padding:0.55rem; font-weight:600; color:var(--color-text);">{{ row.day }}</td>
-                                    <td style="padding:0.55rem; color:#15803d;">{{ row.ok }}</td>
-                                    <td style="padding:0.55rem; color:#dc2626;">{{ row.nok }}</td>
-                                    <td style="padding:0.55rem;">{{ row.ok_pct }}%</td>
-                                    <td style="padding:0.55rem;">{{ row.nok_pct }}%</td>
+                                <tr>
+                                    <td style="font-weight:600;">{{ row.day }}</td>
+                                    <td style="color:#15803d;" data-sort-value="{{ row.ok }}">{{ row.ok }}</td>
+                                    <td style="color:#dc2626;" data-sort-value="{{ row.nok }}">{{ row.nok }}</td>
+                                    <td data-sort-value="{{ row.ok_pct }}">{{ row.ok_pct }}%</td>
+                                    <td data-sort-value="{{ row.nok_pct }}">{{ row.nok_pct }}%</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -265,3 +315,64 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+    (() => {
+        const tables = document.querySelectorAll('.sortable-table');
+        tables.forEach((table) => {
+            const headers = table.querySelectorAll('th[data-sortable]');
+            const tbody = table.querySelector('tbody');
+            if (!headers.length || !tbody) return;
+
+            let currentSort = { index: null, dir: 'asc' };
+
+            const parseValue = (text, type) => {
+                const cleaned = text.replace('%', '').replace(/\s+/g, '');
+                if (type === 'number' && cleaned !== '' && !isNaN(cleaned)) {
+                    return parseFloat(cleaned);
+                }
+                return cleaned.toLowerCase();
+            };
+
+            const applySort = (index, type) => {
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                const dirMultiplier = currentSort.dir === 'asc' ? 1 : -1;
+
+                rows.sort((a, b) => {
+                    const aCell = a.children[index];
+                    const bCell = b.children[index];
+                    const aVal = parseValue(aCell?.dataset.sortValue ?? aCell?.textContent.trim() ?? '', type);
+                    const bVal = parseValue(bCell?.dataset.sortValue ?? bCell?.textContent.trim() ?? '', type);
+
+                    if (aVal < bVal) return -1 * dirMultiplier;
+                    if (aVal > bVal) return 1 * dirMultiplier;
+                    return 0;
+                });
+
+                rows.forEach(row => tbody.appendChild(row));
+            };
+
+            const updateIndicators = (clickedIndex) => {
+                headers.forEach((th, idx) => {
+                    th.classList.remove('sorted-asc', 'sorted-desc');
+                    if (idx === clickedIndex) {
+                        th.classList.add(currentSort.dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+                    }
+                });
+            };
+
+            headers.forEach((th, index) => {
+                th.addEventListener('click', () => {
+                    const type = th.dataset.type || 'text';
+                    if (currentSort.index === index) {
+                        currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        currentSort = { index, dir: 'asc' };
+                    }
+                    applySort(index, type);
+                    updateIndicators(index);
+                });
+            });
+        });
+    })();
+</script>
