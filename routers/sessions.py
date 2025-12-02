@@ -680,7 +680,7 @@ async def get_sessions_site_details(
         )
 
     pdc_options = sorted(df_site["PDC"].dropna().unique().tolist())
-    selected_pdc = [p.strip() for p in pdc.split(",") if p.strip()] if p else pdc_options
+    selected_pdc = [p.strip() for p in pdc.split(",") if p.strip()] if pdc else pdc_options
     selected_pdc = [p for p in selected_pdc if p in pdc_options] or pdc_options
 
     df_site = df_site[df_site["PDC"].isin(selected_pdc)].copy()
