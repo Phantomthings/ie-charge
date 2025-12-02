@@ -685,8 +685,16 @@ async def get_sessions_site_details(
 
     df_site = df_site[df_site["PDC"].isin(selected_pdc)].copy()
 
-    mask_type_site = df_site["type_erreur"].isin(error_type_list) if error_type_list and "type_erreur" in df_site.columns else True
-    mask_moment_site = df_site["moment"].isin(moment_list) if moment_list and "moment" in df_site.columns else True
+    mask_type_site = (
+        df_site["type_erreur"].isin(error_type_list)
+        if error_type_list and "type_erreur" in df_site.columns
+        else pd.Series(True, index=df_site.index)
+    )
+    mask_moment_site = (
+        df_site["moment"].isin(moment_list)
+        if moment_list and "moment" in df_site.columns
+        else pd.Series(True, index=df_site.index)
+    )
     df_filtered = df_site[mask_type_site & mask_moment_site].copy()
 
     for col in ["Datetime start", "Datetime end"]:
