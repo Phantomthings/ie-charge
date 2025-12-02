@@ -54,6 +54,34 @@ def _apply_status_filters(df: pd.DataFrame, error_type_list: list[str], moment_l
     return df
 
 
+def _comparaison_base_context(
+    request: Request,
+    filters: dict,
+    site_focus: str = "",
+    month_focus: str = "",
+    error_message: str | None = None,
+):
+    return {
+        "request": request,
+        "site_rows": [],
+        "count_bars": [],
+        "percent_bars": [],
+        "max_total": 0,
+        "peak_rows": [],
+        "heatmap_rows": [],
+        "heatmap_hours": [],
+        "heatmap_max": 0,
+        "site_options": [],
+        "site_focus": site_focus,
+        "month_options": [],
+        "month_focus": month_focus,
+        "monthly_rows": [],
+        "daily_rows": [],
+        "filters": filters,
+        "error_message": error_message,
+    }
+
+
 @router.get("/sessions/stats")
 async def get_sessions_stats(
     request: Request,
@@ -315,6 +343,14 @@ async def get_sessions_comparaison(
     error_type_list = [e.strip() for e in error_types.split(",") if e.strip()] if error_types else []
     moment_list = [m.strip() for m in moments.split(",") if m.strip()] if moments else []
 
+    filters = {
+        "sites": sites,
+        "date_debut": str(date_debut) if date_debut else "",
+        "date_fin": str(date_fin) if date_fin else "",
+        "error_types": error_types,
+        "moments": moments,
+    }
+
     where_clause, params = _build_conditions(sites, date_debut, date_fin)
 
     sql = f"""
@@ -328,35 +364,24 @@ async def get_sessions_comparaison(
         WHERE {where_clause}
     """
 
-    df = query_df(sql, params)
+    try:
+        df = query_df(sql, params)
+    except Exception as exc:  # pragma: no cover - defensive fallback for UI visibility
+        return templates.TemplateResponse(
+            "partials/sessions_comparaison.html",
+            _comparaison_base_context(
+                request,
+                filters,
+                site_focus="",
+                month_focus="",
+                error_message=str(exc),
+            ),
+        )
 
     if df.empty:
         return templates.TemplateResponse(
             "partials/sessions_comparaison.html",
-            {
-                "request": request,
-                "site_rows": [],
-                "count_bars": [],
-                "percent_bars": [],
-                "max_total": 0,
-                "peak_rows": [],
-                "heatmap_rows": [],
-                "heatmap_hours": [],
-                "heatmap_max": 0,
-                "site_options": [],
-                "site_focus": "",
-                "month_options": [],
-                "month_focus": "",
-                "monthly_rows": [],
-                "daily_rows": [],
-                "filters": {
-                    "sites": sites,
-                    "date_debut": str(date_debut) if date_debut else "",
-                    "date_fin": str(date_fin) if date_fin else "",
-                    "error_types": error_types,
-                    "moments": moments,
-                },
-            },
+            _comparaison_base_context(request, filters),
         )
 
     df = _apply_status_filters(df, error_type_list, moment_list)
@@ -538,10 +563,14 @@ async def get_sessions_comparaison(
                         }
                     )
 
-    return templates.TemplateResponse(
-        "partials/sessions_comparaison.html",
+    context = _comparaison_base_context(
+        request,
+        filters,
+        site_focus=site_focus_value,
+        month_focus=month_focus_value,
+    )
+    context.update(
         {
-            "request": request,
             "site_rows": site_rows,
             "count_bars": count_bars,
             "percent_bars": percent_bars,
@@ -551,17 +580,10 @@ async def get_sessions_comparaison(
             "heatmap_hours": heatmap_hours,
             "heatmap_max": heatmap_max,
             "site_options": site_options,
-            "site_focus": site_focus_value,
             "month_options": month_options,
-            "month_focus": month_focus_value,
             "monthly_rows": monthly_rows,
             "daily_rows": daily_rows,
-            "filters": {
-                "sites": sites,
-                "date_debut": str(date_debut) if date_debut else "",
-                "date_fin": str(date_fin) if date_fin else "",
-                "error_types": error_types,
-                "moments": moments,
-            },
-        },
+        }
     )
+
+    return templates.TemplateResponse("partials/sessions_comparaison.html", context)
