@@ -753,7 +753,8 @@ async def get_sessions_site_details(
     by_pdc = by_pdc.sort_values(["% Réussite", "PDC"], ascending=[True, True])
 
     err_evi = err_rows[err_rows["type_erreur"] == "Erreur_EVI"].copy() if not err_rows.empty else pd.DataFrame()
-    evi_moment = []
+    evi_moment: list[dict] = []
+    evi_moment_grouped: list[dict] = []
     if not err_evi.empty and "moment" in err_evi.columns:
         counts = err_evi.groupby("moment").size().reset_index(name="Nb")
         total = counts["Nb"].sum()
@@ -763,6 +764,116 @@ async def get_sessions_site_details(
                 .sort_values("percent", ascending=False)
                 .to_dict("records")
             )
+
+        mapping = {
+            "Init": "Avant charge",
+            "Lock Connector": "Avant charge",
+            "CableCheck": "Avant charge",
+            "Charge": "Charge",
+            "Fin de charge": "Fin de charge",
+            "Unknown": "Unknown",
+        }
+
+        counts_grouped = (
+            counts.assign(Moment_grp=counts["moment"].map(mapping))
+            .groupby("Moment_grp", as_index=False)["Nb"].sum()
+            .sort_values("Nb", ascending=False)
+        )
+
+        total_grouped = counts_grouped["Nb"].sum()
+        if total_grouped:
+            evi_moment_grouped = (
+                counts_grouped.assign(percent=lambda d: (d["Nb"] / total_grouped * 100).round(2))
+                .to_dict("records")
+            )
+
+    downstream_occ: list[dict] = []
+    downstream_moments: list[str] = []
+    if not err_rows.empty:
+        need_cols_ds = {"Downstream Code PC", "moment"}
+        if need_cols_ds.issubset(err_rows.columns):
+            ds_num = pd.to_numeric(err_rows["Downstream Code PC"], errors="coerce").fillna(0).astype(int)
+            mask_downstream = (ds_num != 0) & (ds_num != 8192)
+            sub = err_rows.loc[mask_downstream, ["Downstream Code PC", "moment"]].copy()
+
+            if not sub.empty:
+                sub["Code_PC"] = pd.to_numeric(sub["Downstream Code PC"], errors="coerce").fillna(0).astype(int)
+                tmp = sub.groupby(["Code_PC", "moment"]).size().reset_index(name="Occurrences")
+                downstream_moments = [m for m in MOMENT_ORDER if m in tmp["moment"].unique()]
+                downstream_moments += [m for m in sorted(tmp["moment"].unique()) if m not in downstream_moments]
+
+                table = (
+                    tmp.pivot(index="Code_PC", columns="moment", values="Occurrences")
+                    .reindex(columns=downstream_moments, fill_value=0)
+                    .reset_index()
+                )
+
+                table["Total"] = table[downstream_moments].sum(axis=1)
+                table = table.sort_values("Total", ascending=False).reset_index(drop=True)
+
+                total_all = int(table["Total"].sum())
+                table["Percent"] = np.where(
+                    total_all > 0,
+                    (table["Total"] / total_all * 100).round(2),
+                    0.0,
+                )
+
+                table.insert(0, "Rank", range(1, len(table) + 1))
+
+                total_row = {
+                    "Rank": "",
+                    "Code_PC": "Total",
+                    **{m: int(table[m].sum()) for m in downstream_moments},
+                }
+                total_row["Total"] = int(table["Total"].sum())
+                total_row["Percent"] = 100.0 if total_all else 0.0
+
+                downstream_occ = table.to_dict("records") + [total_row]
+
+    evi_occ: list[dict] = []
+    evi_occ_moments: list[str] = []
+    if not err_rows.empty:
+        need_cols_evi = {"EVI Error Code", "moment"}
+        if need_cols_evi.issubset(err_rows.columns):
+            ds_num = pd.to_numeric(err_rows.get("Downstream Code PC", 0), errors="coerce").fillna(0).astype(int)
+            evi_code = pd.to_numeric(err_rows["EVI Error Code"], errors="coerce").fillna(0).astype(int)
+
+            mask_evi = (ds_num == 8192) | ((ds_num == 0) & (evi_code != 0))
+            sub = err_rows.loc[mask_evi, ["EVI Error Code", "moment"]].copy()
+
+            if not sub.empty:
+                sub["EVI_Code"] = pd.to_numeric(sub["EVI Error Code"], errors="coerce").astype(int)
+                tmp = sub.groupby(["EVI_Code", "moment"]).size().reset_index(name="Occurrences")
+                evi_occ_moments = [m for m in MOMENT_ORDER if m in tmp["moment"].unique()]
+                evi_occ_moments += [m for m in sorted(tmp["moment"].unique()) if m not in evi_occ_moments]
+
+                table = (
+                    tmp.pivot(index="EVI_Code", columns="moment", values="Occurrences")
+                    .reindex(columns=evi_occ_moments, fill_value=0)
+                    .reset_index()
+                )
+
+                table["Total"] = table[evi_occ_moments].sum(axis=1)
+                table = table.sort_values("Total", ascending=False).reset_index(drop=True)
+
+                total_all = int(table["Total"].sum())
+                table["Percent"] = np.where(
+                    total_all > 0,
+                    (table["Total"] / total_all * 100).round(2),
+                    0.0,
+                )
+
+                table.insert(0, "Rank", range(1, len(table) + 1))
+
+                total_row = {
+                    "Rank": "",
+                    "EVI_Code": "Total",
+                    **{m: int(table[m].sum()) for m in evi_occ_moments},
+                }
+                total_row["Total"] = int(table["Total"].sum())
+                total_row["Percent"] = 100.0 if total_all else 0.0
+
+                evi_occ = table.to_dict("records") + [total_row]
 
     return templates.TemplateResponse(
         "partials/sessions_site_details.html",
@@ -776,6 +887,11 @@ async def get_sessions_site_details(
             "ok_rows": ok_table.to_dict("records"),
             "by_pdc": by_pdc.to_dict("records"),
             "evi_moment": evi_moment,
+            "evi_moment_grouped": evi_moment_grouped,
+            "downstream_occ": downstream_occ,
+            "downstream_moments": downstream_moments,
+            "evi_occ": evi_occ,
+            "evi_occ_moments": evi_occ_moments,
             "base_query": _prepare_query_params(request),
         },
     )
