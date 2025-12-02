@@ -460,7 +460,11 @@ async def get_sessions_comparaison(
             half = s["Nb"].sum() / 2.0
             return int(s.loc[c >= half, "hour"].iloc[0])
 
-        med = g.groupby(site_col).apply(_w_median_hours).reset_index(name="Heure médiane")
+        med = (
+            g.groupby(site_col)[["hour", "Nb"]]
+            .apply(_w_median_hours)
+            .reset_index(name="Heure médiane")
+        )
         summ = peak.merge(med, on=site_col, how="left")
 
         for _, row in summ.sort_values(site_col).iterrows():

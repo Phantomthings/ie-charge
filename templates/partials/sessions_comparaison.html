@@ -131,7 +131,7 @@
                         {% for row in heatmap_rows %}
                         <tr>
                             <td style="position:sticky; left:0; background:var(--color-bg); padding:0.55rem; font-weight:600; color:var(--color-text); border-bottom:1px solid var(--color-border);">{{ row.site }}</td>
-                            {% for value in row.values %}
+                              {% for value in row['values'] %}
                             {% set ratio = (value / heatmap_max * 0.85) if heatmap_max else 0 %}
                             {% set text_color = '#0f172a' if ratio < 0.55 else '#ffffff' %}
                             <td style="padding:0.5rem; border-bottom:1px solid var(--color-border); text-align:center; background:rgba(37,99,235,{{ '%.3f' % ratio }}); color:{{ text_color }}; font-weight:600;">{{ value }}</td>
