@@ -222,22 +222,32 @@
     <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem;">
         <div style="font-weight:700; margin-bottom:0.75rem; color:var(--color-text);">Moments d’erreur EVI (regroupés)</div>
         {% if evi_moment_grouped %}
-        <div class="bar-chart">
-            {% for item in evi_moment_grouped %}
-            {% set color_map = {
-                'Avant charge': '#636EFA',
-                'Charge': '#00CC96',
-                'Fin de charge': '#AB63FA',
-                'Unknown': '#FFA15A'
-            } %}
-            <div class="bar-row">
-                <span class="bar-label">{{ item.Moment_grp }}</span>
-                <div class="bar-container">
-                    <div class="bar" style="width: {{ item.percent }}%; background: {{ color_map.get(item.Moment_grp, 'var(--color-accent)') }};"></div>
+        {% set color_map = {
+            'Avant charge': '#636EFA',
+            'Charge': '#00CC96',
+            'Fin de charge': '#AB63FA',
+            'Unknown': '#FFA15A'
+        } %}
+        {% set ns = namespace(angle=0, segments=[]) %}
+        {% for item in evi_moment_grouped %}
+            {% set start = ns.angle %}
+            {% set end = start + (item.percent * 3.6) %}
+            {% set color = color_map.get(item.Moment_grp, 'var(--color-accent)') %}
+            {% set ns.segments = ns.segments + [color ~ ' ' ~ ('%.2f' % start) ~ 'deg ' ~ ('%.2f' % end) ~ 'deg'] %}
+            {% set ns.angle = end %}
+        {% endfor %}
+        <div class="pie-chart-wrapper">
+            <div class="pie-chart" style="background: conic-gradient({{ ns.segments|join(', ') }});"></div>
+            <div class="pie-legend">
+                {% for item in evi_moment_grouped %}
+                {% set color = color_map.get(item.Moment_grp, 'var(--color-accent)') %}
+                <div class="pie-legend-item">
+                    <span class="dot" style="background: {{ color }};"></span>
+                    <span class="label">{{ item.Moment_grp }}</span>
+                    <span class="value">{{ item.Nb }} ({{ item.percent }}%)</span>
                 </div>
-                <span class="bar-value">{{ item.Nb }} ({{ item.percent }}%)</span>
+                {% endfor %}
             </div>
-            {% endfor %}
         </div>
         {% else %}
         <div class="empty-state">
@@ -250,16 +260,34 @@
     <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:1rem;">
         <div style="font-weight:700; margin-bottom:0.75rem; color:var(--color-text);">Répartition des erreurs EVI par moment</div>
         {% if evi_moment %}
-        <div class="bar-chart">
-            {% for item in evi_moment %}
-            <div class="bar-row">
-                <span class="bar-label">{{ item.moment }}</span>
-                <div class="bar-container">
-                    <div class="bar bar-danger" style="width: {{ item.percent }}%;"></div>
+        {% set color_map = {
+            'Init': '#2563EB',
+            'Lock Connector': '#00B5D8',
+            'CableCheck': '#636EFA',
+            'Charge': '#10B981',
+            'Fin de charge': '#AB63FA',
+            'Unknown': '#FFA15A'
+        } %}
+        {% set ns = namespace(angle=0, segments=[]) %}
+        {% for item in evi_moment %}
+            {% set start = ns.angle %}
+            {% set end = start + (item.percent * 3.6) %}
+            {% set color = color_map.get(item.moment, 'var(--color-danger)') %}
+            {% set ns.segments = ns.segments + [color ~ ' ' ~ ('%.2f' % start) ~ 'deg ' ~ ('%.2f' % end) ~ 'deg'] %}
+            {% set ns.angle = end %}
+        {% endfor %}
+        <div class="pie-chart-wrapper">
+            <div class="pie-chart" style="background: conic-gradient({{ ns.segments|join(', ') }});"></div>
+            <div class="pie-legend">
+                {% for item in evi_moment %}
+                {% set color = color_map.get(item.moment, 'var(--color-danger)') %}
+                <div class="pie-legend-item">
+                    <span class="dot" style="background: {{ color }};"></span>
+                    <span class="label">{{ item.moment }}</span>
+                    <span class="value">{{ item.Nb }} ({{ item.percent }}%)</span>
                 </div>
-                <span class="bar-value text-danger">{{ item.Nb }} ({{ item.percent }}%)</span>
+                {% endfor %}
             </div>
-            {% endfor %}
         </div>
         {% else %}
         <div class="empty-state">
@@ -294,7 +322,7 @@
                                 <td>{{ row.Rank }}</td>
                                 <td>{{ row.Code_PC }}</td>
                                 {% for m in downstream_moments %}
-                                <td>{{ row[m] if row[m] is not none else 0 }}</td>
+                                <td>{{ (row[m] if row[m] is not none else 0)|int }}</td>
                                 {% endfor %}
                                 <td data-sort-value="{{ row.Total }}">{{ row.Total }}</td>
                                 <td data-sort-value="{{ row.Percent }}">{{ row.Percent|round(2) }}%</td>
@@ -332,7 +360,7 @@
                                 <td>{{ row.Rank }}</td>
                                 <td>{{ row.EVI_Code }}</td>
                                 {% for m in evi_occ_moments %}
-                                <td>{{ row[m] if row[m] is not none else 0 }}</td>
+                                <td>{{ (row[m] if row[m] is not none else 0)|int }}</td>
                                 {% endfor %}
                                 <td data-sort-value="{{ row.Total }}">{{ row.Total }}</td>
                                 <td data-sort-value="{{ row.Percent }}">{{ row.Percent|round(2) }}%</td>
